@@ -1,0 +1,37 @@
+{
+  "runId": "E4-1b-rf1-P25-run1-1725002000",
+  "exp": "E4",
+  "config": "1b-rf1",
+  "params": {
+    "parallelism": 25,
+    "ratePerSec": 0,
+    "durationSec": 120,
+    "topics": ["weather-rain", "weather-temp", "weather-wind"]
+  },
+  "startEpochMs": 1725002000000,
+  "stopEpochMs": 1725002120000,
+  "functionUrl": "https://example.invalid/hexweather-producer-v2",
+  "profile": {"config": "1b-rf1", "muMsgs": null, "tauAckMs": null, "tauE2eMs": null, "ca2": null, "cs2": null, "source": "DEFAULT"},
+  "invocations": [
+    {"invocationId": 1, "status": "ok"}
+  ],
+  "status": "finished",
+  "summary": {
+    "lambdaMean": 9600.0,
+    "lambdaP50": 9590.0,
+    "ackMean": 13.5,
+    "ackP50": 11.8,
+    "ackP99": 68.0,
+    "e2eMean": 33.0,
+    "e2eP50": 29.5,
+    "e2eP99": 78.0,
+    "consumerLagMax": 150,
+    "consumerLimited": false,
+    "sent": 1152000,
+    "acked": 1151300,
+    "failed": 700,
+    "errors": {"TimeoutException": 700},
+    "avgRecordBytes": 148,
+    "cs2Est": 0.56
+  }
+}

@@ -1,0 +1,365 @@
+{
+  "uid": "thesis-v2-live",
+  "title": "Thesis v2 — Klaster na żywo",
+  "id": null,
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "thesis-v2",
+    "kafka",
+    "w4"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "topic",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "thesis-prom"
+        },
+        "query": "label_values(kafka_log_logendoffset, topic)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {},
+        "sort": 1
+      },
+      {
+        "name": "broker",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "thesis-prom"
+        },
+        "query": "label_values(kafka_log_logendoffset, broker)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {},
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Stan kolejki (całka)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Wiadomości w brokerach",
+      "description": "Całka strumienia wiadomości na zbiorze partycji = Σ(LogEndOffset − LogStartOffset) — liczba wiadomości aktualnie przechowywanych (stan kolejki), zsumowana per broker po wszystkich tematach weather-*. Stackowany wykres pokazuje udział każdego brokera w całkowitej kolejce klastra.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "spanNulls": false,
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (broker) (kafka_log_logendoffset{topic=~\"weather-.*\"} - kafka_log_logstartoffset{topic=~\"weather-.*\"})",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Wiadomości w brokerach wg tematu",
+      "description": "Całka (stan kolejki) per broker i temat: Σ(LogEndOffset − LogStartOffset) po partycjach danego tematu na danym brokerze (obejmuje repliki lidera i followerów).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "spanNulls": false,
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (broker, topic) (kafka_log_logendoffset{topic=~\"$topic\"} - kafka_log_logstartoffset{topic=~\"$topic\"})",
+          "legendFormat": "{{broker}} / {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Wiadomości u liderów wg tematu",
+      "description": "Ta sama całka (Σ LogEndOffset − LogStartOffset) filtrowana do partycji, dla których broker jest liderem: lider partycji = broker, na którym kafka.cluster:type=Partition,name=ReplicasCount > 0 (na followerach gauge = 0). Pokazuje stan kolejki bez duplikacji replik.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "spanNulls": false,
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (broker, topic) ((kafka_log_logendoffset{topic=~\"$topic\"} - kafka_log_logstartoffset{topic=~\"$topic\"}) and on (broker, topic, partition) (kafka_cluster_partition_replicascount > 0))",
+          "legendFormat": "{{broker}} / {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Liderzy per broker",
+      "description": "Liczba partycji, dla których dany broker jest liderem (kafka_server_replicamanager_leadercount).",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_server_replicamanager_leadercount",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Partycje per broker",
+      "description": "Liczba wszystkich partycji (lider + follower) na danym brokerze (kafka_server_replicamanager_partitioncount).",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_server_replicamanager_partitioncount",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Mapa liderów",
+      "description": "Migawka (instant) mapowania partycja → lider: lider partycji = broker, na którym kafka.cluster:type=Partition,name=ReplicasCount > 0. Transformacja 'Labels to fields' rozkłada wynik na kolumny topic/partition/broker.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_cluster_partition_replicascount{topic=~\"weather-.*\"} > 0",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "Value": true },
+            "indexByName": { "topic": 0, "partition": 1, "broker": 2 }
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Tempo (pochodna)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Napływ wg tematu (msg/s)",
+      "description": "Pochodna = rate() licznika MessagesInPerSec Count w oknie 30 s — wiadomości/s napływające do klastra, zsumowane per temat po wszystkich brokerach.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (topic) (rate(kafka_server_brokertopicmetrics_messagesin_topic_total{topic=~\"$topic\"}[30s]))",
+          "legendFormat": "{{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Napływ wg brokera (msg/s)",
+      "description": "Pochodna = rate() licznika MessagesInPerSec Count (agregat bez topic) w oknie 30 s — wiadomości/s napływające per broker.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (broker) (rate(kafka_server_brokertopicmetrics_messagesin_total[30s]))",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Pochodna LEO per partycja (msg/s)",
+      "description": "Pochodna = deriv() gauge'a LogEndOffset w oknie 30 s — wiadomości/s per partycja, filtrowane do partycji, dla których broker jest liderem (kafka.cluster:type=Partition,name=ReplicasCount > 0), żeby uniknąć podwójnego liczenia replik.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "deriv(kafka_log_logendoffset{topic=~\"$topic\",broker=~\"$broker\"}[30s]) and on (broker,topic,partition) (kafka_cluster_partition_replicascount > 0)",
+          "legendFormat": "{{topic}}-{{partition}}@{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Napływ u liderów wg brokera",
+      "description": "Suma po tematach weather-* pochodnej deriv(LogEndOffset) filtrowanej do partycji, dla których broker jest liderem, zsumowana per broker — tempo przyjmowania nowych wiadomości bez podwójnego liczenia replik.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (broker) (deriv(kafka_log_logendoffset{topic=~\"weather-.*\"}[30s]) and on (broker,topic,partition) (kafka_cluster_partition_replicascount > 0))",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Całka w oknie",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Wiadomości przyjęte w oknie wykresu (skumulowane)",
+      "description": "Całka w oknie = increase() licznika MessagesInPerSec Count w oknie $__range (całe okno czasowe wykresu), zsumowana per temat — łączna liczba wiadomości przyjętych w oknie, niezależnie od tego czy nadal przechowywane.",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (topic) (increase(kafka_server_brokertopicmetrics_messagesin_topic_total{topic=~\"$topic\"}[$__range]))",
+          "legendFormat": "{{topic}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Stan kolejki u liderów wg tematu (wersja czasowa)",
+      "description": "Wersja time series stanu kolejki (całki) u liderów wg tematu: Σ(LogEndOffset − LogStartOffset) filtrowane do partycji, dla których broker jest liderem — do porównania z wersją skumulowaną increase() obok.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (topic) ((kafka_log_logendoffset{topic=~\"$topic\"} - kafka_log_logstartoffset{topic=~\"$topic\"}) and on (broker,topic,partition) (kafka_cluster_partition_replicascount > 0))",
+          "legendFormat": "{{topic}}"
+        }
+      ]
+    }
+  ]
+}

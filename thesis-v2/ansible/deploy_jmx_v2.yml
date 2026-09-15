@@ -1,0 +1,131 @@
+---
+- name: Deploy JMX Exporter to Kafka Brokers (thesis-v2, additive ruleset)
+  hosts: kafka_nodes
+  become: yes
+  tasks:
+    - name: Download JMX Prometheus Javaagent
+      get_url:
+        url: https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.19.0/jmx_prometheus_javaagent-0.19.0.jar
+        dest: /opt/kafka/libs/jmx_prometheus_javaagent.jar
+        mode: '0644'
+
+    - name: Create Curated Local JMX Config (bounded-cardinality whitelist, thesis W5 + thesis-v2 W4)
+      copy:
+        dest: /opt/kafka/config/jmx_exporter.yaml
+        content: |
+          lowercaseOutputName: true
+          lowercaseOutputLabelNames: true
+          whitelistObjectNames:
+            - "kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec"
+            - "kafka.server:type=BrokerTopicMetrics,name=BytesOutPerSec"
+            - "kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec"
+            - "kafka.server:type=BrokerTopicMetrics,name=TotalProduceRequestsPerSec"
+            - "kafka.server:type=BrokerTopicMetrics,name=FailedProduceRequestsPerSec"
+            - "kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Produce"
+            - "kafka.network:type=RequestMetrics,name=RequestQueueTimeMs,request=Produce"
+            - "kafka.network:type=RequestMetrics,name=LocalTimeMs,request=Produce"
+            - "kafka.network:type=RequestMetrics,name=RemoteTimeMs,request=Produce"
+            - "kafka.network:type=RequestChannel,name=RequestQueueSize"
+            - "kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions"
+            - "kafka.server:type=ReplicaManager,name=UnderMinIsrPartitionCount"
+            - "kafka.server:type=ReplicaManager,name=IsrShrinksPerSec"
+            - "kafka.server:type=ReplicaManager,name=IsrExpandsPerSec"
+            - "kafka.server:type=ReplicaManager,name=PartitionCount"
+            - "kafka.server:type=ReplicaManager,name=LeaderCount"
+            - "kafka.server:type=ReplicaFetcherManager,name=MaxLag,clientId=Replica"
+            - "kafka.server:type=DelayedOperationPurgatory,name=PurgatorySize,delayedOperation=Produce"
+            - "kafka.controller:type=KafkaController,name=ActiveControllerCount"
+            - "kafka.controller:type=KafkaController,name=OfflinePartitionsCount"
+            - "kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec,topic=*"
+            - "kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec,topic=*"
+            - "kafka.log:type=Log,name=LogEndOffset,topic=*,partition=*"
+            - "kafka.log:type=Log,name=LogStartOffset,topic=*,partition=*"
+            - "kafka.log:type=Log,name=Size,topic=*,partition=*"
+            - "kafka.cluster:type=Partition,name=ReplicasCount,topic=*,partition=*"
+            - "kafka.cluster:type=Partition,name=InSyncReplicasCount,topic=*,partition=*"
+            - "kafka.cluster:type=Partition,name=UnderReplicated,topic=*,partition=*"
+            - "kafka.server:type=KafkaRequestHandlerPool,name=RequestHandlerAvgIdlePercent"
+            - "kafka.network:type=SocketServer,name=NetworkProcessorAvgIdlePercent"
+          rules:
+            # --- New topic/partition-scoped rules (thesis-v2 W4, spec-monitoring.md §2) ---
+            # These MUST precede the pre-existing no-topic BrokerTopicMetrics
+            # catch-all rule below so that the topic=(.+) pattern matches
+            # first for the newly-whitelisted per-topic MBeans.
+            - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec, topic=(.+)><>Count
+              name: kafka_server_brokertopicmetrics_messagesin_topic_total
+              labels: {topic: "$1"}
+              type: COUNTER
+            - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec, topic=(.+)><>Count
+              name: kafka_server_brokertopicmetrics_bytesin_topic_total
+              labels: {topic: "$1"}
+              type: COUNTER
+            - pattern: kafka.log<type=Log, name=(LogEndOffset|LogStartOffset|Size), topic=(.+), partition=(.+)><>Value
+              name: kafka_log_$1
+              labels: {topic: "$2", partition: "$3"}
+              type: GAUGE
+            - pattern: kafka.cluster<type=Partition, name=(ReplicasCount|InSyncReplicasCount|UnderReplicated), topic=(.+), partition=(.+)><>Value
+              name: kafka_cluster_partition_$1
+              labels: {topic: "$2", partition: "$3"}
+              type: GAUGE
+            - pattern: kafka.server<type=KafkaRequestHandlerPool, name=RequestHandlerAvgIdlePercent><>OneMinuteRate
+              name: kafka_server_requesthandleravgidlepercent
+              type: GAUGE
+            - pattern: kafka.network<type=SocketServer, name=NetworkProcessorAvgIdlePercent><>Value
+              name: kafka_network_networkprocessoravgidlepercent
+              type: GAUGE
+            # --- Pre-existing rules (verbatim from ../../ansible/deploy_jmx.yml) ---
+            - pattern: kafka.server<type=BrokerTopicMetrics, name=(\w+)PerSec><>Count
+              name: kafka_server_brokertopicmetrics_$1_total
+              type: COUNTER
+            - pattern: kafka.network<type=RequestMetrics, name=(\w+), request=(\w+)><>(\d+)thPercentile
+              name: kafka_network_requestmetrics_$1
+              type: GAUGE
+              labels:
+                request: "$2"
+                quantile: "0.$3"
+            - pattern: kafka.network<type=RequestMetrics, name=(\w+), request=(\w+)><>Count
+              name: kafka_network_requestmetrics_$1_count
+              type: COUNTER
+              labels:
+                request: "$2"
+            - pattern: kafka.network<type=RequestChannel, name=RequestQueueSize><>Value
+              name: kafka_network_requestchannel_requestqueuesize
+              type: GAUGE
+            - pattern: kafka.server<type=ReplicaManager, name=(\w+)PerSec><>Count
+              name: kafka_server_replicamanager_$1_total
+              type: COUNTER
+            - pattern: kafka.server<type=ReplicaManager, name=(\w+)><>Value
+              name: kafka_server_replicamanager_$1
+              type: GAUGE
+            - pattern: kafka.server<type=ReplicaFetcherManager, name=MaxLag, clientId=(.+)><>Value
+              name: kafka_server_replicafetchermanager_maxlag
+              type: GAUGE
+              labels:
+                clientid: "$1"
+            - pattern: kafka.server<type=DelayedOperationPurgatory, name=PurgatorySize, delayedOperation=(.+)><>Value
+              name: kafka_server_purgatorysize
+              type: GAUGE
+              labels:
+                operation: "$1"
+            - pattern: kafka.controller<type=KafkaController, name=(\w+)><>Value
+              name: kafka_controller_kafkacontroller_$1
+              type: GAUGE
+        mode: '0644'
+
+    - name: Inject Javaagent into Kafka Systemd Service
+      lineinfile:
+        path: /etc/systemd/system/kafka.service
+        insertafter: '^\[Service\]'
+        line: 'Environment="KAFKA_JMX_OPTS=-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar=7071:/opt/kafka/config/jmx_exporter.yaml"'
+        regexp: '^Environment="KAFKA_JMX_OPTS'
+
+    - name: Reload Systemd Daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart Kafka Service (ignore unreachable brokers — Phase A stops kafka-2/kafka-3 by design)
+      systemd:
+        name: kafka
+        state: restarted
+      ignore_unreachable: yes
+      ignore_errors: yes

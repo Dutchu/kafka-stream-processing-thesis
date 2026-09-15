@@ -1,0 +1,108 @@
+---
+
+- name: "Build + restart dashboardu v2 na kafka-load (user, root tylko do restartu)"
+  hosts: load_generator
+  become: no
+  vars:
+    dashboard_src: "../kafka-app/dashboard"
+    frontend_src: "../kafka-app/dashboard-front"
+    dashboard_dest: "/opt/thesis-dashboard"
+    profiles_src: "../analysis/output/profiles.json"
+    config_name: "{{ config | default('1b-rf1') }}"
+    cluster_env_src: "../config/{{ config_name }}.env"
+  tasks:
+    - name: "Git pull na kontrolerze (repo = źródło prawdy; scp-sync niepotrzebny)"
+      command: git -C ~/thesis-v2 pull --ff-only
+      delegate_to: localhost
+      register: git_pull
+      failed_when: false
+      changed_when: "'Already up to date' not in git_pull.stdout"
+
+    - name: "Przypomnienie o kluczu deploy, gdy pull nie przeszedł"
+      debug:
+        msg: "git pull na kontrolerze nie przeszedł ({{ git_pull.stderr | default('?') }}). Działamy na lokalnym stanie ~/thesis-v2 — zrób sync ręcznie albo dodaj deploy-key."
+      when: git_pull.rc != 0
+    - name: "Copy dashboard v2 sources (wlasciciel katalogu: researcher)"
+      copy:
+        src: "{{ dashboard_src }}"
+        dest: "{{ dashboard_dest }}/"
+        owner: researcher
+        group: researcher
+
+    - name: "Publikuj frontend na dysk (Javalin serwuje /opt/thesis-frontend w pierwszej kolejnosci)"
+      copy:
+        src: "{{ frontend_src }}/"
+        dest: "/opt/thesis-frontend/"
+        owner: researcher
+        group: researcher
+        mode: '0644'
+
+    - name: "Stat profiles.json na kontrolerze (opcjonalny — z pipeline'u W5)"
+      stat:
+        path: "{{ profiles_src }}"
+      delegate_to: localhost
+      register: profiles_stat
+
+    - name: "Kopiuj profiles.json (jesli istnieje na kontrolerze)"
+      copy:
+        src: "{{ profiles_src }}"
+        dest: /opt/thesis-dashboard/profiles.json
+        owner: researcher
+        group: researcher
+        mode: '0644'
+      when: profiles_stat.stat.exists
+
+    - name: "Lustro profiles.json do folderu public (frontend sprawdza obecnosc profilu OMB statycznie)"
+      copy:
+        src: "{{ profiles_src }}"
+        dest: /opt/thesis-frontend/profiles.json
+        owner: researcher
+        group: researcher
+        mode: '0644'
+      when: profiles_stat.stat.exists
+
+    - name: "Połóż cluster.env z repo (thesis-v2/config/<config>.env — aplikacja czyta przy starcie)"
+      copy:
+        src: "{{ cluster_env_src }}"
+        dest: /opt/thesis-dashboard/cluster.env
+        owner: researcher
+        group: researcher
+        mode: '0644'
+
+    - name: "Build the Dashboard v2 App via Maven (skip tests — mvn test osobno jako user)"
+      command: mvn -q -DskipTests package
+      args:
+        chdir: "{{ dashboard_dest }}/dashboard"
+
+    - name: "Restart thesis-dashboard (jedyny task rootowy)"
+      systemd:
+        name: thesis-dashboard
+        state: restarted
+        daemon_reload: yes
+      become: yes
+
+    - name: "Poczekaj na port 8080"
+      wait_for:
+        port: 8080
+        host: 127.0.0.1
+        timeout: 60
+
+    - name: "Post-check: GET /api/health"
+      uri:
+        url: "http://localhost:8080/api/health"
+        return_content: yes
+      register: health_result
+      retries: 6
+      delay: 5
+      until: health_result.status is defined and health_result.status == 200
+
+    - name: "Wypisz odpowiedz /api/health (oczekiwane: status=ok)"
+      debug:
+        msg: "{{ health_result.content }}"
+
+    - name: "Assert /api/health zwraca status=ok"
+      assert:
+        that:
+          - "'\"status\":\"ok\"' in health_result.content"
+        fail_msg: "GET /api/health nie zwrocil status=ok: {{ health_result.content }}"
+        success_msg: "GET /api/health OK."

@@ -1,0 +1,188 @@
+---
+
+- name: "Preflight — config + FUNCTION_URL (localhost)"
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    config: "{{ config | default('') }}"
+  tasks:
+    - name: "Assert config in [1b-rf1, 3b-rf1, 3b-rf3]"
+      assert:
+        that:
+          - config in ['1b-rf1', '3b-rf1', '3b-rf3']
+        fail_msg: >-
+          -e config=<1b-rf1|3b-rf1|3b-rf3> jest wymagane (otrzymano: '{{ config }}').
+        success_msg: "config={{ config }} OK."
+
+    - name: "Stat gcloud/function_url.env (zapisany przez deploy_function_v2.sh)"
+      stat:
+        path: "{{ playbook_dir }}/../gcloud/function_url.env"
+      register: function_url_stat
+
+    - name: "Assert function_url.env istnieje"
+      assert:
+        that:
+          - function_url_stat.stat.exists
+        fail_msg: >-
+          Brak gcloud/function_url.env. Uruchom najpierw
+          gcloud/deploy_function_v2.sh <CONFIG>, ktory go zapisuje.
+        success_msg: "function_url.env znaleziony."
+
+    - name: "Wczytaj FUNCTION_URL z pliku"
+      shell: "grep -oE 'FUNCTION_URL=.*' {{ playbook_dir }}/../gcloud/function_url.env | tail -n1 | cut -d= -f2- | tr -d '\"'"
+      register: function_url_raw
+      changed_when: false
+
+    - name: "Ustaw fakt function_url"
+      set_fact:
+        function_url: "{{ function_url_raw.stdout | trim }}"
+
+    - name: "Assert FUNCTION_URL niepusty"
+      assert:
+        that:
+          - function_url | length > 0
+        fail_msg: "FUNCTION_URL odczytany z function_url.env jest pusty."
+        success_msg: "FUNCTION_URL={{ function_url }}"
+
+- name: "Install systemowy dashboardu v2 na kafka-load (root)"
+  hosts: load_generator
+  become: yes
+  vars:
+    config: "{{ hostvars['localhost']['config'] }}"
+    function_url: "{{ hostvars['localhost']['function_url'] }}"
+    svc_user: "researcher"
+  tasks:
+    - name: "Ensure Maven is installed"
+      apt:
+        name: maven
+        state: present
+        update_cache: yes
+
+    - name: "Utworz /opt/thesis-dashboard (wlasciciel: user serwisowy)"
+      file:
+        path: /opt/thesis-dashboard
+        state: directory
+        owner: "{{ svc_user }}"
+        group: "{{ svc_user }}"
+        mode: '0755'
+
+    - name: "Utworz katalog bazy SQLite (wlasciciel: user serwisowy)"
+      file:
+        path: /var/lib/thesis-dashboard
+        state: directory
+        owner: "{{ svc_user }}"
+        group: "{{ svc_user }}"
+        mode: '0755'
+        recurse: yes
+
+    - name: "Przejmij stare pliki rootowe (migracja po buildach rootem)"
+      command: "chown -R {{ svc_user }}:{{ svc_user }} /opt/thesis-dashboard /var/lib/thesis-dashboard /opt/thesis-frontend"
+      changed_when: true
+      failed_when: false
+
+    - name: "Utworz /opt/thesis-frontend (Javalin serwuje stad frontend w pierwszej kolejnosci)"
+      file:
+        path: /opt/thesis-frontend
+        state: directory
+        owner: "{{ svc_user }}"
+        group: "{{ svc_user }}"
+        mode: '0755'
+
+    - name: "Create systemd service for Dashboard v2 (User=nie-root)"
+      copy:
+        dest: /etc/systemd/system/thesis-dashboard.service
+        content: |
+          [Unit]
+          Description=Thesis v2 Dashboard (Javalin) — konsument/inspektor/kontroler biegow
+          After=network.target
+
+          [Service]
+          User={{ svc_user }}
+          Environment="FUNCTION_URL={{ function_url }}"
+          Environment="DASHBOARD_PORT=8080"
+          Environment="DB_PATH=/var/lib/thesis-dashboard/thesis.db"
+          Environment="PROFILES_FILE=/opt/thesis-dashboard/profiles.json"
+          Environment="PROM_URL=http://10.0.0.5:9090"
+          # Ksztalt klastra (CONFIG/KAFKA_SEED/TOPICS/...) NIE jest tutaj:
+          # aplikacja czyta /opt/thesis-dashboard/cluster.env z repo
+          # (thesis-v2/config/<config>.env, kladzie build-playbook).
+          # Jawne env procesowe wygrywa z plikiem (tylko awaryjny override).
+          WorkingDirectory=/opt/thesis-dashboard/dashboard
+          ExecStart=/usr/bin/java -Xms512m -Xmx3g -jar target/thesis-dashboard-2.0.0.jar
+          SuccessExitStatus=143
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: "daemon-reload + enable (bez startu — startuje build-playbook)"
+      systemd:
+        name: thesis-dashboard
+        enabled: yes
+        daemon_reload: yes
+
+    - name: "Utworz stan agenta (root; czyta tylko agent)"
+      file:
+        path: /opt/thesis-deploy
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: "Utworz inbox agenta (pisze CI jako user serwisowy)"
+      file:
+        path: /opt/thesis-deploy/inbox
+        state: directory
+        owner: "{{ svc_user }}"
+        group: "{{ svc_user }}"
+        mode: '0755'
+
+    - name: "Zainstaluj thesis-deploy-agent"
+      copy:
+        src: thesis-deploy-agent.sh
+        dest: /usr/local/bin/thesis-deploy-agent
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: "Unit one-shot agenta"
+      copy:
+        dest: /etc/systemd/system/thesis-deploy-agent.service
+        content: |
+          [Unit]
+          Description=Thesis deploy agent (one-shot, pull-model)
+          After=network.target
+
+          [Service]
+          Type=oneshot
+          User=root
+          ExecStart=/usr/local/bin/thesis-deploy-agent
+
+    - name: "Path trigger na inbox/version.txt"
+      copy:
+        dest: /etc/systemd/system/thesis-deploy.path
+        content: |
+          [Unit]
+          Description=Trigger deploya na nowy version.txt w inboxie
+
+          [Path]
+          PathChanged=/opt/thesis-deploy/inbox/version.txt
+          Unit=thesis-deploy-agent.service
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: "daemon-reload + enable i start path triggera (sam enable czeka na reboot)"
+      systemd:
+        name: thesis-deploy.path
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: "Wyzwol agenta na istniejacym inboxie (touch; agent przy tym samym SHA konczy already-deployed)"
+      shell: test -f /opt/thesis-deploy/inbox/version.txt && touch /opt/thesis-deploy/inbox/version.txt
+      changed_when: true
+      failed_when: false
+      become: no

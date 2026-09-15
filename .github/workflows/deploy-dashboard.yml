@@ -1,0 +1,76 @@
+name: dashboard-v2 CI/CD
+
+on:
+  push:
+    branches: [app-dist]
+    paths:
+      - 'thesis-v2/kafka-app/dashboard/**'
+      - '.github/workflows/deploy-dashboard.yml'
+  pull_request:
+    branches: [app-dist]
+    paths:
+      - 'thesis-v2/kafka-app/dashboard/**'
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT }}
+  ZONE: ${{ vars.GCP_ZONE }}
+  SSH_USER: ${{ vars.SSH_USER }}
+  INSTANCE: kafka-load
+  APP_DIR: thesis-v2/kafka-app/dashboard
+  JAR: thesis-v2/kafka-app/dashboard/target/thesis-dashboard-2.0.0.jar
+  REMOTE_DIR: /opt/thesis-dashboard/dashboard/target
+
+jobs:
+  test:
+    name: mvn test (bramka)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: thesis-v2/kafka-app/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: mvn -q test
+
+  deploy:
+    name: deploy na kafka-load (IAP)
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDSDK_PYTHON: /usr/bin/python3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT }}
+      - name: Build fat-jar
+        run: mvn -q -DskipTests package
+        working-directory: thesis-v2/kafka-app/dashboard
+      - name: Use numpy for IAP tunel
+        run: python3 -c "import numpy" 2>/dev/null || pip install numpy
+      - name: Verify gcloud python has numpy
+        run: |
+          echo "gcloud python: $(gcloud info --format='value(basic.python_location)')"
+          "$CLOUDSDK_PYTHON" -c "import numpy; print('numpy OK', numpy.__version__)"
+      - name: Stempel wersji + wysyłka do inboxu
+        run: |
+          echo -n "$GITHUB_SHA" > thesis-v2/kafka-app/dashboard/target/version.txt
+          gcloud compute scp --tunnel-through-iap --zone="$ZONE" \
+            "$JAR" "$SSH_USER@$INSTANCE:/opt/thesis-deploy/inbox/" --project="$PROJECT_ID"
+          gcloud compute scp --tunnel-through-iap --zone="$ZONE" \
+            thesis-v2/kafka-app/dashboard/target/version.txt \
+            "$SSH_USER@$INSTANCE:/opt/thesis-deploy/inbox/" --project="$PROJECT_ID"

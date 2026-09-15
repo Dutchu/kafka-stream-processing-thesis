@@ -1,0 +1,155 @@
+[
+ {
+  "window_end_ms": 1725003000000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4750,
+  "acked": 4700,
+  "failed": 10,
+  "bytes": 695600,
+  "ack_mean_ms": 15.9,
+  "ack_p50_ms": 14.6,
+  "ack_p95_ms": 38.0,
+  "ack_p99_ms": 40.0,
+  "ack_max_ms": 90.0,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003015000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4795,
+  "acked": 4745,
+  "failed": 10,
+  "bytes": 702260,
+  "ack_mean_ms": 16.3,
+  "ack_p50_ms": 14.9,
+  "ack_p95_ms": 38.2,
+  "ack_p99_ms": 42.5,
+  "ack_max_ms": 91.0,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003030000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4800,
+  "acked": 4750,
+  "failed": 10,
+  "bytes": 703000,
+  "ack_mean_ms": 16.2,
+  "ack_p50_ms": 14.8,
+  "ack_p95_ms": 38.1,
+  "ack_p99_ms": 42.0,
+  "ack_max_ms": 90.5,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003045000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4805,
+  "acked": 4755,
+  "failed": 10,
+  "bytes": 703740,
+  "ack_mean_ms": 16.4,
+  "ack_p50_ms": 15.0,
+  "ack_p95_ms": 38.3,
+  "ack_p99_ms": 42.8,
+  "ack_max_ms": 91.5,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003060000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4790,
+  "acked": 4740,
+  "failed": 10,
+  "bytes": 701920,
+  "ack_mean_ms": 16.1,
+  "ack_p50_ms": 14.7,
+  "ack_p95_ms": 38.0,
+  "ack_p99_ms": 41.8,
+  "ack_max_ms": 90.2,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003075000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4798,
+  "acked": 4748,
+  "failed": 10,
+  "bytes": 702704,
+  "ack_mean_ms": 16.2,
+  "ack_p50_ms": 14.9,
+  "ack_p95_ms": 38.2,
+  "ack_p99_ms": 42.2,
+  "ack_max_ms": 90.8,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003090000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4802,
+  "acked": 4752,
+  "failed": 10,
+  "bytes": 703296,
+  "ack_mean_ms": 16.3,
+  "ack_p50_ms": 14.9,
+  "ack_p95_ms": 38.2,
+  "ack_p99_ms": 42.4,
+  "ack_max_ms": 91.0,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003105000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4794,
+  "acked": 4744,
+  "failed": 10,
+  "bytes": 701696,
+  "ack_mean_ms": 16.1,
+  "ack_p50_ms": 14.8,
+  "ack_p95_ms": 38.0,
+  "ack_p99_ms": 41.9,
+  "ack_max_ms": 90.4,
+  "errors": {
+   "TimeoutException": 10
+  }
+ },
+ {
+  "window_end_ms": 1725003120000,
+  "run_id": "E2-1b-rf1-rho50-run1-1725003000",
+  "invocations": 20,
+  "sent": 4800,
+  "acked": 4750,
+  "failed": 10,
+  "bytes": 703000,
+  "ack_mean_ms": 16.2,
+  "ack_p50_ms": 14.8,
+  "ack_p95_ms": 38.1,
+  "ack_p99_ms": 42.0,
+  "ack_max_ms": 90.5,
+  "errors": {
+   "TimeoutException": 10
+  }
+ }
+]

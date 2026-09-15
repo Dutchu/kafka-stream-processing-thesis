@@ -1,0 +1,63 @@
+name: frontend hot-reload CI/CD
+
+on:
+  push:
+    branches: [app-front]
+    paths:
+      - 'thesis-v2/kafka-app/dashboard-front/**'
+      - '.github/workflows/deploy-frontend.yml'
+  pull_request:
+    branches: [app-front]
+    paths:
+      - 'thesis-v2/kafka-app/dashboard-front/**'
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT }}
+  ZONE: ${{ vars.GCP_ZONE }}
+  SSH_USER: ${{ vars.SSH_USER }}
+  INSTANCE: kafka-load
+  PUBLIC_DIR: thesis-v2/kafka-app/dashboard-front
+  REMOTE_DIR: /opt/thesis-frontend
+
+jobs:
+  lint:
+    name: front-lint (bramka)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: for f in thesis-v2/kafka-app/dashboard-front/*.js; do node --check "$f" || exit 1; done
+
+  deploy:
+    name: front-deploy (hot-reload)
+    needs: lint
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDSDK_PYTHON: /usr/bin/python3
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT }}
+      - name: Przyspiesz tunel IAP
+        run: python3 -c "import numpy" 2>/dev/null || pip install numpy
+      - name: Verify gcloud python has numpy
+        run: |
+          echo "gcloud python: $(gcloud info --format='value(basic.python_location)')"
+          "$CLOUDSDK_PYTHON" -c "import numpy; print('numpy OK', numpy.__version__)"
+      - name: Stempel wersji (dowod swiezosci)
+        run: echo -n "$GITHUB_SHA" > thesis-v2/kafka-app/dashboard-front/version.txt
+      - name: Sync plikow frontendu
+        run: >
+          gcloud compute scp --tunnel-through-iap --zone="$ZONE"
+          "$PUBLIC_DIR"/* "$SSH_USER@$INSTANCE:$REMOTE_DIR/" --project="$PROJECT_ID"
+      - name: Weryfikacja swiezosci (Javalin podaje nowa wersje?)
+        run: >
+          gcloud compute ssh --tunnel-through-iap --zone="$ZONE"
+          "$SSH_USER@$INSTANCE" --project="$PROJECT_ID"
+          --command="curl -sf --max-time 15 localhost:8080/version.txt | grep -q '$GITHUB_SHA' &&
+            echo FRESH: Javalin serves $GITHUB_SHA"

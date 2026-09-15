@@ -1,0 +1,221 @@
+{
+  "uid": "thesis-v2-kingman",
+  "title": "Thesis v2 — Kingman",
+  "id": null,
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "thesis-v2",
+    "kingman",
+    "w4"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "topic",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+        "query": "label_values(kafka_log_logendoffset, topic)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {},
+        "sort": 1
+      },
+      {
+        "name": "broker",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+        "query": "label_values(kafka_log_logendoffset, broker)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {},
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Przewidywane vs zmierzone (ACK)",
+      "description": "Silnik Kingmana (dashboard v2): predAck = tauAckMs + Wq, gdzie Wq = rhoEff/(1−rhoEff) · (ca2+cs2)/2 · tauAckMs (formuła Kingmana G/G/1 dla czasu oczekiwania w kolejce). Porównanie predykcji (thesis_kingman_pred_ack_ms) z medianą/p99 zmierzonego opóźnienia ACK (thesis_ack_p50_ms, thesis_ack_p99_ms) oraz ze średnią obserwowaną (thesis_kingman_obs_ack_ms).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_pred_ack_ms", "legendFormat": "pred ACK" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_obs_ack_ms", "legendFormat": "obs ACK (mean)" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_ack_p50_ms", "legendFormat": "ACK p50" },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_ack_p99_ms", "legendFormat": "ACK p99" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Przewidywane vs zmierzone (e2e)",
+      "description": "Silnik Kingmana (dashboard v2): predE2e = tauE2eMs + Wq (ta sama pochodna Wq co dla ACK, τ obsługi to tauAckMs w obu predykcjach). Porównanie predykcji (thesis_kingman_pred_e2e_ms) z medianą/p99 zmierzonego opóźnienia e2e (thesis_e2e_p50_ms, thesis_e2e_p99_ms) oraz ze średnią obserwowaną (thesis_kingman_obs_e2e_ms).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_pred_e2e_ms", "legendFormat": "pred e2e" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_obs_e2e_ms", "legendFormat": "obs e2e (mean)" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_e2e_p50_ms", "legendFormat": "e2e p50" },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_e2e_p99_ms", "legendFormat": "e2e p99" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Błąd predykcji",
+      "description": "errAck = obsAckMean − predAck; errE2e = obsE2eMean − predE2e — różnica między obserwowanym średnim opóźnieniem a predykcją Kingmana, w milisekundach.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_err_ack_ms", "legendFormat": "err ACK (ms)" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_err_e2e_ms", "legendFormat": "err e2e (ms)" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Błąd względny",
+      "description": "errRel = err/pred — błąd predykcji Kingmana względem wartości przewidywanej, wyrażony jako ułamek (percentunit).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_err_ack_rel", "legendFormat": "err ACK (rel)" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_err_e2e_rel", "legendFormat": "err e2e (rel)" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "ρ i λ/μ",
+      "description": "ρ = λ/μ (rhoEff = min(rho, 0.999)), λ = lambdaLeo (pochodna ΔΣLogEndOffset/Δt, niezależna od konsumenta), μ = tempo obsługi z profilu Kingmana (z E4). Progi odniesienia 0.5/0.8/1.0 zaznaczają rosnące ryzyko kolejkowania wg formuły Kingmana G/G/1 (Wq → ∞ przy ρ → 1).",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "orange", "value": 0.8 },
+              { "color": "red", "value": 1.0 }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "λ (msg/s)" },
+            "properties": [ { "id": "unit", "value": "short" } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "μ (msg/s)" },
+            "properties": [ { "id": "unit", "value": "short" } ]
+          }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_rho", "legendFormat": "ρ" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_lambda_msgs", "legendFormat": "λ (msg/s)" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_mu_msgs", "legendFormat": "μ (msg/s)" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Parametry",
+      "description": "Parametry profilu Kingmana aktywnej konfiguracji: ca2/cs2 (z profilu, ustawiane przez PUT/from-run) vs ca2_est/cs2_est (estymaty bieżące, nie podmieniają profilu automatycznie), oraz wq_ms bieżący.",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_ca2", "legendFormat": "ca2 (profil)" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_cs2", "legendFormat": "cs2 (profil)" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_ca2_est", "legendFormat": "ca2_est (bieżący)" },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_cs2_est", "legendFormat": "cs2_est (bieżący)" },
+        { "refId": "E", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_kingman_wq_ms", "legendFormat": "Wq (ms)" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Konsument",
+      "description": "Tempo konsumenta (thesis_consumer_rate_msgs), lag konsumenta w wiadomościach (thesis_consumer_lag_msgs = Σ(endOffsets − position)) i licznik nieudanych ACK producenta (thesis_ack_failed_total). Lag > 5·λ przez > 10% okna oznacza consumer_limited=true (e2e niewiarygodne, ACK nadal wiarygodne — protokół pomiarowy §5.2 planu eksperymentu).",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_consumer_lag_msgs", "legendFormat": "lag (msgs)" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_consumer_rate_msgs", "legendFormat": "tempo konsumenta (msg/s)" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "thesis-prom" }, "expr": "thesis_ack_failed_total", "legendFormat": "ACK failed (total)" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "state-timeline",
+      "title": "Aktywny bieg",
+      "description": "thesis_run_active{run_id,exp} == 1 wskazuje który bieg (run_id) jest aktualnie aktywny w kontrolerze biegów dashboardu — oś czasu stanów, legenda pokazuje run_id.",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "thesis_run_active == 1",
+          "legendFormat": "{{run_id}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "_comment": "Calibration runs that REPLACE the E1 triple for a config when E1 was measured with a producer configuration different from the E2/E4 campaign. Each entry is applied by calibration.py; the original E1 values stay in tab-e1-summary.csv and both are listed side by side in tab-calibration.csv. Decision: author, 2026-09 (manuscript session).",
+  "1b-rf1": {
+    "run": "E4/1b-rf1/R500/run1",
+    "reason": "E1/1b-rf1 (2026-09-10 17:36-17:49) was measured with the stock producer (linger.ms=5, batch.size=16 KiB); the tuning decision (linger.ms=50, batch.size=64 KiB, report 2026-09-10-tuning.md) was taken the same evening and the whole E2/E4 campaign ran tuned. tau_ack(E1)=6.2 ms therefore lacks the 50 ms linger component present in every E2 point. R500/run1 (tuned, P=20, 500 msg/s per function, rho~0.02, lag<=180) is the consistent low-load calibration point."
+  }
+}

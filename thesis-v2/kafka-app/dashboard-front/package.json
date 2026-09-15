@@ -1,0 +1,15 @@
+{
+  "name": "thesis-dashboard-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Thesis v2 dashboard frontend (vanilla JS + Chart.js). Local dev via Vite (proxy to the live backend); production deploy is a static-file sync to /opt/thesis-frontend (hot-reload, no restart).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "for f in *.js; do node --check \"$f\" || exit 1; done"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

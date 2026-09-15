@@ -1,0 +1,162 @@
+---
+
+- name: Refresh Prometheus scrape config + provisioned Grafana dashboards (thesis-v2)
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Preflight - stat controller-side Grafana provisioning sources (original + thesis-v2)
+      stat:
+        path: "{{ item }}"
+      delegate_to: localhost
+      become: no
+      vars:
+        ansible_become: no
+      loop:
+        - ../../monitoring_node/grafana/datasource-prometheus.yml
+        - ../../monitoring_node/grafana/dashboards-provider.yml
+        - ../../monitoring_node/grafana/thesis-kafka-dashboard.json
+        - ../../monitoring_node/grafana/thesis-e9-closeout.json
+        - ../monitoring_node/grafana/thesis-v2-cluster-live.json
+        - ../monitoring_node/grafana/thesis-v2-kingman.json
+        - ../monitoring_node/grafana/thesis-v2-saturation.json
+      register: grafana_src_stat
+
+    - name: Preflight - assert all Grafana provisioning sources exist before any change is made
+      assert:
+        that:
+          - item.stat.exists
+        fail_msg: >-
+          Missing controller-side source '{{ item.item }}'. This playbook
+          runs ON kafka-monitoring with ~/ansible and ~/monitoring_node
+          synced next to each other. For the original sources see
+          update_monitoring.yml; for the thesis-v2 sources sync
+          thesis-v2/monitoring_node next to thesis-v2/ansible on
+          kafka-monitoring, then re-run this playbook
+          (cd ~/thesis-v2/ansible && ansible-playbook -i ../../ansible/inventory.ini update_monitoring_v2.yml).
+        success_msg: "Preflight OK: {{ item.item }} present on the controller."
+      loop: "{{ grafana_src_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Write /etc/prometheus/prometheus.yml (node_exporter + kafka_jmx jobs verbatim, + new dashboard_v2 job)
+      copy:
+        dest: /etc/prometheus/prometheus.yml
+        content: |
+          # Managed by thesis-v2/ansible/update_monitoring_v2.yml — this file
+          # is the AUTHORITATIVE refresh source for prometheus.yml. Edits
+          # made by hand on the monitoring VM will be overwritten on the
+          # next run.
+          global:
+            scrape_interval: 5s
+          scrape_configs:
+            - job_name: 'node_exporter'
+              static_configs:
+                - targets: ["10.0.0.6:9100"]
+                  labels:
+                    node: kafka-1
+                - targets: ["10.0.0.3:9100"]
+                  labels:
+                    node: kafka-2
+                - targets: ["10.0.0.4:9100"]
+                  labels:
+                    node: kafka-3
+                - targets: ["127.0.0.1:9100"]
+                  labels:
+                    node: monitoring
+                - targets: ["10.0.0.2:9100"]
+                  labels:
+                    node: kafka-load
+            - job_name: 'kafka_jmx'
+              static_configs:
+                - targets: ["10.0.0.6:7071"]
+                  labels:
+                    broker: kafka-1
+                - targets: ["10.0.0.3:7071"]
+                  labels:
+                    broker: kafka-2
+                - targets: ["10.0.0.4:7071"]
+                  labels:
+                    broker: kafka-3
+            - job_name: 'dashboard_v2'
+              static_configs:
+                - targets: ["10.0.0.2:8080"]
+                  labels: {node: kafka-load}
+        mode: '0644'
+
+    - name: Restart prometheus (guaranteed, right after config write)
+      systemd:
+        name: prometheus
+        state: restarted
+
+    - name: Ensure Grafana provisioning directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: grafana
+        group: grafana
+      loop:
+        - /etc/grafana/provisioning/datasources
+        - /etc/grafana/provisioning/dashboards
+        - /var/lib/grafana/dashboards
+
+    - name: Provision Grafana datasource (Prometheus, uid thesis-prom)
+      copy:
+        src: ../../monitoring_node/grafana/datasource-prometheus.yml
+        dest: /etc/grafana/provisioning/datasources/datasource-prometheus.yml
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Provision Grafana dashboard file-provider
+      copy:
+        src: ../../monitoring_node/grafana/dashboards-provider.yml
+        dest: /etc/grafana/provisioning/dashboards/dashboards-provider.yml
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Copy the thesis Kafka dashboard JSON (pre-existing, unchanged)
+      copy:
+        src: ../../monitoring_node/grafana/thesis-kafka-dashboard.json
+        dest: /var/lib/grafana/dashboards/thesis-kafka-dashboard.json
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Copy the E9 rejection-closeout dashboard JSON (pre-existing, unchanged)
+      copy:
+        src: ../../monitoring_node/grafana/thesis-e9-closeout.json
+        dest: /var/lib/grafana/dashboards/thesis-e9-closeout.json
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Copy the thesis-v2 cluster-live dashboard JSON (new)
+      copy:
+        src: ../monitoring_node/grafana/thesis-v2-cluster-live.json
+        dest: /var/lib/grafana/dashboards/thesis-v2-cluster-live.json
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Copy the thesis-v2 Kingman dashboard JSON (new)
+      copy:
+        src: ../monitoring_node/grafana/thesis-v2-kingman.json
+        dest: /var/lib/grafana/dashboards/thesis-v2-kingman.json
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Copy the thesis-v2 saturation-attribution dashboard JSON (new)
+      copy:
+        src: ../monitoring_node/grafana/thesis-v2-saturation.json
+        dest: /var/lib/grafana/dashboards/thesis-v2-saturation.json
+        mode: '0644'
+        owner: grafana
+        group: grafana
+
+    - name: Restart grafana-server (guaranteed, right after provisioning copies)
+      systemd:
+        name: grafana-server
+        state: restarted

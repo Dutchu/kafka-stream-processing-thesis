@@ -1,0 +1,253 @@
+---
+
+- name: "Preflight — walidacja parametrow i wypisanie planu (bez polaczenia z hostami)"
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    quorum_size: "{{ quorum_size | default('') }}"
+    confirm_wipe: "{{ confirm_wipe | default('') }}"
+  tasks:
+    - name: "Assert quorum_size in [1,3]"
+      assert:
+        that:
+          - quorum_size in ['1', '3', 1, 3]
+        fail_msg: >-
+          quorum_size musi byc 1 albo 3 (otrzymano: '{{ quorum_size }}').
+          Uzycie: -e quorum_size=1 lub -e quorum_size=3.
+        success_msg: "quorum_size={{ quorum_size }} OK."
+
+    - name: "Assert confirm_wipe=yes"
+      assert:
+        that:
+          - confirm_wipe == 'yes'
+        fail_msg: >-
+          Ten playbook KASUJE dane i metadane KRaft na wszystkich osiagalnych
+          wezlach kafka_nodes. Wymagane jawne potwierdzenie:
+          -e confirm_wipe=yes
+        success_msg: "confirm_wipe=yes potwierdzone."
+
+    - name: "Wypisz plan dzialania"
+      debug:
+        msg:
+          - "=========================================================="
+          - "PLAN kraft_reconfigure.yml — quorum_size={{ quorum_size }}"
+          - "=========================================================="
+          - "1. systemctl stop kafka na WSZYSTKICH osiagalnych wezlach kafka_nodes."
+          - "2. Usuniecie zawartosci /var/lib/kafka/data/* (w tym meta.properties,"
+          - "   __cluster_metadata-0) na WSZYSTKICH osiagalnych wezlach."
+          - "3. Nowy cluster-id (kafka-storage.sh random-uuid, jeden dla calego klastra)."
+          - "4. Zapis server.properties: {{ 'controller.quorum.voters=1@10.0.0.6:9093, RF systemowe=1' if (quorum_size|string)=='1' else '3 voterzy, RF systemowe=3, min.isr=2' }}."
+          - "5. Format (kafka-storage.sh format) na wezlach AKTYWNYCH: {{ 'tylko kafka-1 (10.0.0.6)' if (quorum_size|string)=='1' else 'kafka-1, kafka-2, kafka-3' }}."
+          - "6. systemctl start kafka na wezlach aktywnych; wezly nieaktywne pozostaja zatrzymane (enabled=no)."
+          - "7. Post-check: kafka-metadata-quorum.sh describe --status, kafka-broker-api-versions.sh; zapis /etc/kafka-thesis-v2.env."
+          - "=========================================================="
+
+    - name: "Zapisz quorum_size/confirm_wipe jako facty localhost (widoczne w kolejnych playach)"
+      set_fact:
+        quorum_size: "{{ quorum_size }}"
+        confirm_wipe: "{{ confirm_wipe }}"
+
+- name: "Krok 1-2 — zatrzymanie kafki i wyczyszczenie danych na WSZYSTKICH wezlach (osiagalnych)"
+  hosts: kafka_nodes
+  become: yes
+  ignore_unreachable: yes
+  gather_facts: no
+  vars:
+    data_dir: "/var/lib/kafka/data"
+  tasks:
+    - name: "Zatrzymaj usluge kafka (jesli osiagalna)"
+      systemd:
+        name: kafka
+        state: stopped
+      ignore_errors: yes
+
+    - name: "Usun zawartosc katalogu danych KRaft (meta.properties, __cluster_metadata-0, logi tematow)"
+      shell: "rm -rf {{ data_dir }}/* {{ data_dir }}/.[!.]* 2>/dev/null || true"
+      ignore_errors: yes
+
+    - name: "Upewnij sie, ze katalog danych nadal istnieje (pusty)"
+      file:
+        path: "{{ data_dir }}"
+        state: directory
+        mode: '0755'
+      ignore_errors: yes
+
+- name: "Krok 3 — wygeneruj JEDEN nowy cluster-id (run_once na pierwszym osiagalnym wezle)"
+  hosts: kafka_nodes[0]
+  become: yes
+  gather_facts: no
+  vars:
+    kafka_dir: "/opt/kafka"
+  tasks:
+    - name: "kafka-storage.sh random-uuid"
+      command: "{{ kafka_dir }}/bin/kafka-storage.sh random-uuid"
+      register: cluster_id_result
+      changed_when: false
+
+    - name: "Ustaw fakt CLUSTER_ID (do propagacji na wszystkie wezly kolejnym playem)"
+      set_fact:
+        new_cluster_id: "{{ cluster_id_result.stdout | trim }}"
+
+    - name: "Wypisz wygenerowany cluster-id"
+      debug:
+        msg: "Nowy CLUSTER_ID: {{ new_cluster_id }}"
+
+- name: "Krok 4 — zapis server.properties na wszystkich wezlach kafka_nodes wg quorum_size"
+  hosts: kafka_nodes
+  become: yes
+  gather_facts: yes
+  vars:
+    kafka_dir: "/opt/kafka"
+    data_dir: "/var/lib/kafka/data"
+    quorum_size: "{{ hostvars['localhost']['quorum_size'] | default(quorum_size) }}"
+    new_cluster_id: "{{ hostvars[groups['kafka_nodes'][0]]['new_cluster_id'] }}"
+    node_index: "{{ groups['kafka_nodes'].index(inventory_hostname) + 1 }}"
+    is_active_1b: "{{ inventory_hostname == groups['kafka_nodes'][0] }}"
+  tasks:
+    - name: "Zapisz server.properties (quorum_size=1: tylko 10.0.0.6 jako voter, RF=1)"
+      when: (quorum_size | string) == '1'
+      copy:
+        dest: "{{ kafka_dir }}/config/kraft/server.properties"
+        content: |
+          process.roles=broker,controller
+          node.id={{ node_index }}
+          controller.quorum.voters=1@10.0.0.6:9093
+          listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          inter.broker.listener.name=PLAINTEXT
+          advertised.listeners=PLAINTEXT://{{ ansible_default_ipv4.address }}:9092
+          controller.listener.names=CONTROLLER
+          log.dirs={{ data_dir }}
+          num.partitions=6
+          log.retention.hours=24
+          auto.create.topics.enable=false
+          default.replication.factor=1
+          offsets.topic.replication.factor=1
+          transaction.state.log.replication.factor=1
+          transaction.state.log.min.isr=1
+
+    - name: "Zapisz server.properties (quorum_size=3: 3 voterzy, RF=3, min.isr=2)"
+      when: (quorum_size | string) == '3'
+      copy:
+        dest: "{{ kafka_dir }}/config/kraft/server.properties"
+        content: |
+          process.roles=broker,controller
+          node.id={{ node_index }}
+          controller.quorum.voters=1@10.0.0.6:9093,2@10.0.0.3:9093,3@10.0.0.4:9093
+          listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+          inter.broker.listener.name=PLAINTEXT
+          advertised.listeners=PLAINTEXT://{{ ansible_default_ipv4.address }}:9092
+          controller.listener.names=CONTROLLER
+          log.dirs={{ data_dir }}
+          num.partitions=6
+          log.retention.hours=24
+          auto.create.topics.enable=false
+          default.replication.factor=3
+          offsets.topic.replication.factor=3
+          transaction.state.log.replication.factor=3
+          transaction.state.log.min.isr=2
+
+- name: "Krok 5 — format KRaft na wezlach AKTYWNYCH (quorum_size=1: tylko kafka-1; =3: wszystkie)"
+  hosts: kafka_nodes
+  become: yes
+  gather_facts: no
+  vars:
+    kafka_dir: "/opt/kafka"
+    quorum_size: "{{ hostvars['localhost']['quorum_size'] | default(quorum_size) }}"
+    new_cluster_id: "{{ hostvars[groups['kafka_nodes'][0]]['new_cluster_id'] }}"
+    is_active: >-
+      {{ (quorum_size | string) == '3' or (inventory_hostname == groups['kafka_nodes'][0]) }}
+  tasks:
+    - name: "Format storage directory (kafka-storage.sh format) — TYLKO na wezlach aktywnych"
+      command: >-
+        {{ kafka_dir }}/bin/kafka-storage.sh format
+        -t {{ new_cluster_id }}
+        -c {{ kafka_dir }}/config/kraft/server.properties
+      when: is_active | bool
+      register: format_result
+      changed_when: "'formatted' in (format_result.stdout | default('') | lower) or format_result.rc == 0"
+
+- name: "Krok 6 — start/stop uslugi kafka wg aktywnosci wezla (NIGDY start na wezle nieaktywnym w trybie 1)"
+  hosts: kafka_nodes
+  become: yes
+  gather_facts: no
+  vars:
+    quorum_size: "{{ hostvars['localhost']['quorum_size'] | default(quorum_size) }}"
+    is_active: >-
+      {{ (quorum_size | string) == '3' or (inventory_hostname == groups['kafka_nodes'][0]) }}
+  tasks:
+    - name: "Uruchom i wlacz usluge kafka (TYLKO wezly aktywne)"
+      systemd:
+        name: kafka
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      when: is_active | bool
+
+    - name: "Zatrzymaj i wylacz usluge kafka (wezly NIEAKTYWNE — pozostaja zatrzymane)"
+      systemd:
+        name: kafka
+        state: stopped
+        enabled: no
+      when: not (is_active | bool)
+      ignore_errors: yes
+
+- name: "Krok 7 — post-check i zapis /etc/kafka-thesis-v2.env na wezlach aktywnych"
+  hosts: kafka_nodes[0]
+  become: yes
+  gather_facts: no
+  vars:
+    kafka_dir: "/opt/kafka"
+    quorum_size: "{{ hostvars['localhost']['quorum_size'] | default(quorum_size) }}"
+    new_cluster_id: "{{ hostvars[groups['kafka_nodes'][0]]['new_cluster_id'] }}"
+    bootstrap_active: >-
+      {{ '10.0.0.6:9092' if (quorum_size | string) == '1' else '10.0.0.6:9092,10.0.0.3:9092,10.0.0.4:9092' }}
+  tasks:
+    - name: "Poczekaj az broker odpowie (kafka-broker-api-versions.sh)"
+      command: "{{ kafka_dir }}/bin/kafka-broker-api-versions.sh --bootstrap-server 10.0.0.6:9092"
+      register: api_versions_result
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: api_versions_result.rc == 0
+
+    - name: "kafka-metadata-quorum.sh describe --status (post-check LeaderId + liczba voterow)"
+      command: "{{ kafka_dir }}/bin/kafka-metadata-quorum.sh --bootstrap-server 10.0.0.6:9092 describe --status"
+      register: quorum_status_result
+      changed_when: false
+
+    - name: "Wypisz status kworum"
+      debug:
+        msg: "{{ quorum_status_result.stdout_lines }}"
+
+    - name: "Assert: liczba voterow w statusie zgadza sie z quorum_size (informacyjnie — nie przerywa playa jesli format tekstu sie rozni)"
+      debug:
+        msg: >-
+          OCZEKIWANO: LeaderId obecny, liczba voterow = {{ quorum_size }}.
+          Sprawdz powyzszy 'kafka-metadata-quorum describe --status' recznie —
+          dokladny format tekstu moze sie roznic miedzy wersjami Kafki.
+
+    - name: "Wypisz CLUSTER_ID i QUORUM_SIZE"
+      debug:
+        msg:
+          - "CLUSTER_ID={{ new_cluster_id }}"
+          - "QUORUM_SIZE={{ quorum_size }}"
+
+- name: "Krok 7b — zapis /etc/kafka-thesis-v2.env na KAZDYM wezle aktywnym"
+  hosts: kafka_nodes
+  become: yes
+  gather_facts: no
+  vars:
+    quorum_size: "{{ hostvars['localhost']['quorum_size'] | default(quorum_size) }}"
+    new_cluster_id: "{{ hostvars[groups['kafka_nodes'][0]]['new_cluster_id'] }}"
+    is_active: >-
+      {{ (quorum_size | string) == '3' or (inventory_hostname == groups['kafka_nodes'][0]) }}
+  tasks:
+    - name: "Zapisz /etc/kafka-thesis-v2.env (uzywany przez kolektor R7 do config.env) — TYLKO wezly aktywne"
+      copy:
+        dest: /etc/kafka-thesis-v2.env
+        content: |
+          CLUSTER_ID={{ new_cluster_id }}
+          QUORUM_SIZE={{ quorum_size }}
+        mode: '0644'
+      when: is_active | bool

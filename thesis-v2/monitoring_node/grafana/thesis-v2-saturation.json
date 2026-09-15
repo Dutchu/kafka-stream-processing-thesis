@@ -1,0 +1,369 @@
+{
+  "uid": "thesis-v2-sat",
+  "title": "Thesis v2 — Atrybucja saturacji",
+  "id": null,
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "thesis-v2",
+    "saturation",
+    "w4"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "topic",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+        "query": "label_values(kafka_log_logendoffset, topic)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {},
+        "sort": 1
+      },
+      {
+        "name": "broker",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+        "query": "label_values(kafka_log_logendoffset, broker)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {},
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU brokerów",
+      "description": "1 − ułamek czasu idle CPU (średnia po rdzeniach) per broker. Sygnatura saturacji (i): CPU idle brokera < 10% (czyli busy > 0,9) — próg odniesienia rysowany na 0,9 (experiment-plan.md §5.4).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "1 - avg by (node)(rate(node_cpu_seconds_total{mode=\"idle\",node=~\"kafka-.*\"}[1m]))",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "0.9",
+          "legendFormat": "próg saturacji (0,9)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Request handler idle",
+      "description": "RequestHandlerAvgIdlePercent per broker. Sygnatura saturacji (i): wartość < 0,1 (próg odniesienia rysowany na 0,1) — experiment-plan.md §5.4.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0.1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_server_requesthandleravgidlepercent",
+          "legendFormat": "{{broker}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "0.1",
+          "legendFormat": "próg saturacji (0,1)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Network processor idle",
+      "description": "NetworkProcessorAvgIdlePercent per broker. Sygnatura saturacji (i): wartość < 0,1 (próg odniesienia rysowany na 0,1) — experiment-plan.md §5.4.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0.1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_network_networkprocessoravgidlepercent",
+          "legendFormat": "{{broker}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "0.1",
+          "legendFormat": "próg saturacji (0,1)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Kolejka żądań",
+      "description": "kafka_network_requestchannel_requestqueuesize per broker. Sygnatura saturacji (ii): RequestQueueSize > 0 utrzymujące się > 50% okna analizy (experiment-plan.md §5.4).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_network_requestchannel_requestqueuesize",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Purgatory",
+      "description": "kafka_server_purgatorysize (Produce) per broker — rozmiar kolejki opóźnionych operacji Produce, dodatkowy obserwowalny sygnał narastania kolejki (Kingman queueing buildup pod acks=all).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_server_purgatorysize",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "NIC RX/TX brokerów (B/s)",
+      "description": "Sygnatura saturacji (iii): NIC RX brokera ≥ 80% udokumentowanego limitu — e2-standard-4: 8 Gb/s egress (dokumentowany limit; ingress cytowany w manuskrypcie, experiment-plan.md §5.4). Linia odniesienia rysowana na 1 GB/s (≈ 80% z 8 Gb/s ≈ 0,8 GB/s zaokrąglone do 1 GB/s jako punkt odniesienia egress).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "spanNulls": false,
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "1 GB/s (limit egress e2-standard-4, 8 Gb/s dokumentowany)" },
+            "properties": [ { "id": "custom.lineStyle", "value": { "fill": "dash" } } ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (node)(rate(node_network_receive_bytes_total{node=~\"kafka-.*\",device!~\"lo\"}[30s]))",
+          "legendFormat": "{{node}} rx"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (node)(rate(node_network_transmit_bytes_total{node=~\"kafka-.*\",device!~\"lo\"}[30s]))",
+          "legendFormat": "{{node}} tx"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "1000000000",
+          "legendFormat": "1 GB/s (limit egress e2-standard-4, 8 Gb/s dokumentowany)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Zapis dysku (B/s)",
+      "description": "Sygnatura saturacji (iv): zapis dysku ≥ 80% udokumentowanego limitu wolumenu (48 MB/s dla 100 GB pd-ssd, experiment-plan.md §5.4). Przy ~150 B wiadomościach (iv) nie powinno zapalać się jako pierwsze; jeśli tak — odnotować w manuskrypcie. Linia odniesienia rysowana na 48 MB/s.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "48 MB/s (limit wolumenu 100 GB pd-ssd, dokumentowany)" },
+            "properties": [ { "id": "custom.lineStyle", "value": { "fill": "dash" } } ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "sum by (node)(rate(node_disk_written_bytes_total{node=~\"kafka-.*\"}[30s]))",
+          "legendFormat": "{{node}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "50331648",
+          "legendFormat": "48 MB/s (limit wolumenu 100 GB pd-ssd, dokumentowany)"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Produce TotalTimeMs p99",
+      "description": "kafka_network_requestmetrics_totaltimems{request=\"Produce\",quantile=\"0.99\"} per broker — p99 czasu obsługi żądania Produce; wzrost monotoniczny między kolejnymi krokami P w drabince E4 jest częścią kryterium prawdziwej saturacji po stronie klienta (experiment-plan.md §5.4).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "kafka_network_requestmetrics_totaltimems{request=\"Produce\",quantile=\"0.99\"}",
+          "legendFormat": "{{broker}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Host konsumenta (kafka-load) CPU / pamięć",
+      "description": "CPU: 1 − avg(rate(node_cpu_seconds_total{mode=\"idle\",node=\"kafka-load\"}[1m])) (host dashboardu/konsumenta, do wykluczenia klienta jako wąskiego gardła — eskalacja E4 w experiment-plan.md §5.4/§4 uwaga). Pamięć: node_memory_MemAvailable_bytes{node=\"kafka-load\"} na drugiej osi.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "kafka-load CPU busy" },
+            "properties": [ { "id": "unit", "value": "percentunit" } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "kafka-load MemAvailable" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "custom.axisPlacement", "value": "right" }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\",node=\"kafka-load\"}[1m]))",
+          "legendFormat": "kafka-load CPU busy"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "node_memory_MemAvailable_bytes{node=\"kafka-load\"}",
+          "legendFormat": "kafka-load MemAvailable"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "λ z dashboardu",
+      "description": "thesis_kingman_lambda_msgs — λ eksportowana przez dashboard v2 (ta sama wielkość co lambdaLeo z AdminClient), do zestawienia plateau tempa napływu z zapalającą się sygnaturą brokera (experiment-plan.md §5.4, kryterium przerwania drabinki E4).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "spanNulls": false, "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "thesis-prom" },
+          "expr": "thesis_kingman_lambda_msgs",
+          "legendFormat": "λ (dashboard)"
+        }
+      ]
+    }
+  ]
+}

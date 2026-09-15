@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thesis Dashboard v2 — Kafka / Kingman</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<header>
+    <h1>Thesis Dashboard v2</h1>
+    <div class="header-grid">
+        <div><span class="label">CONFIG</span><span id="hdr-config" class="value">—</span></div>
+        <div><span class="label">Bootstrap</span><span id="hdr-brokers" class="value">—</span></div>
+        <div><span class="label">Profil &mu;</span><span id="hdr-mu" class="value">—</span></div>
+        <div><span class="label">&tau;<sub>ack</sub></span><span id="hdr-tau-ack" class="value">—</span></div>
+        <div><span class="label">&tau;<sub>e2e</sub></span><span id="hdr-tau-e2e" class="value">—</span></div>
+        <div><span class="label">c<sub>a</sub>&sup2;</span><span id="hdr-ca2" class="value">—</span></div>
+        <div><span class="label">c<sub>s</sub>&sup2;</span><span id="hdr-cs2" class="value">—</span></div>
+        <div><span class="label">źródło profilu</span><span id="hdr-source" class="value">—</span></div>
+        <div><span class="label">Bieg</span><span id="hdr-run" class="value">brak</span></div>
+    </div>
+</header>
+
+<main>
+    <nav class="tabs">
+        <button type="button" id="tab-btn-charts" class="tab-btn active">Wykresy</button>
+        <button type="button" id="tab-btn-control" class="tab-btn">Wysyłanie</button>
+        <button type="button" id="tab-btn-calib" class="tab-btn">Kalibracja</button>
+    </nav>
+    <div id="tab-charts">
+<section class="panel cards-panel">
+        <h2>Karty</h2>
+        <div class="profile-bar">
+            <label>Profil predykcji:
+                <select id="profile-select"><option value="">(ładowanie…)</option></select>
+            </label>
+            <span id="profile-active-note" class="hint"></span>
+        </div>
+        <div class="metrics-grid">
+            <div class="metric-card"><h3>&lambda; (LEO)</h3><span id="val-lambda-leo">—</span><small>msg/s</small></div>
+            <div class="metric-card"><h3>&lambda; (konsument)</h3><span id="val-lambda-consumer">—</span><small>msg/s</small></div>
+            <div class="metric-card"><h3>&rho;</h3><span id="val-rho">—</span><small>%</small></div>
+            <div class="metric-card"><h3>W<sub>q</sub></h3><span id="val-wq">—</span><small>ms</small></div>
+            <div class="metric-card"><h3>L<sub>pred</sub> ACK / obs</h3><span id="val-pred-ack">—</span><small id="val-obs-ack" class="sub">obs —</small></div>
+            <div class="metric-card"><h3>&epsilon; ACK</h3><span id="val-err-ack">—</span><small id="val-err-ack-rel" class="sub">—%</small></div>
+            <div class="metric-card"><h3>L<sub>pred</sub> e2e / obs</h3><span id="val-pred-e2e">—</span><small id="val-obs-e2e" class="sub">obs —</small></div>
+            <div class="metric-card"><h3>&epsilon; e2e</h3><span id="val-err-e2e">—</span><small id="val-err-e2e-rel" class="sub">—%</small></div>
+            <div class="metric-card"><h3>MAE 60s (ACK / e2e)</h3><span id="val-mae">—</span></div>
+            <div class="metric-card"><h3>Lag konsumenta</h3><span id="val-lag">—</span><small>msg</small></div>
+            <div class="metric-card"><h3>Błędy producenta</h3><span id="val-errors">brak</span></div>
+            <div class="metric-card"><h3>&Sigma; wiadomości w klastrze</h3><span id="val-total-msgs">—</span></div>
+        </div>
+
+        <h2>Wiadomości w brokerach</h2>
+        <div class="chart-container"><canvas id="chart-brokers"></canvas></div>
+
+        <h2>Tempo leaderów w czasie (msg/s per broker)</h2>
+        <div class="chart-container"><canvas id="chart-brokers-ts"></canvas></div>
+
+        <h2>Liderzy</h2>
+        <div class="chart-container"><canvas id="chart-leaders"></canvas></div>
+        <table id="table-partitions" class="partitions-table">
+            <thead><tr><th>Temat</th><th>Partycja</th><th>Lider</th><th>Repliki</th><th>ISR</th></tr></thead>
+            <tbody><tr><td colspan="5" class="hint">brak danych</td></tr></tbody>
+        </table>
+
+        <h2>Kingman na żywo</h2>
+        <div class="chart-container"><canvas id="chart-kingman"></canvas></div>
+        <div class="chart-container small"><canvas id="chart-epsilon"></canvas></div>
+
+        <h2>Tematy</h2>
+        <div class="chart-container small"><canvas id="chart-topics"></canvas></div>
+
+        <h2>Wszystkie tematy w klastrze <button type="button" id="btn-refresh-topics" class="secondary">Odśwież</button></h2>
+        <p class="hint" id="shape-note">kształt klastra: nieznany (kliknij Odśwież)</p>
+        <table id="table-topics" class="partitions-table">
+            <thead><tr><th>Temat (obserwowany?)</th><th>Partycje</th><th>RF</th><th>Wiadomości</th><th>Liderzy</th><th>Akcje</th></tr></thead>
+            <tbody><tr><td colspan="6" class="hint">brak danych — kliknij Odśwież</td></tr></tbody>
+        </table>
+    </section>
+    </div>
+    <div id="tab-control" hidden>
+<section class="panel control-panel">
+        <h2>Wysyłanie</h2>
+        <form id="run-form">
+            <div class="form-row">
+            <fieldset>
+                <legend>Tematy</legend>
+                <label><input type="checkbox" name="topic" value="weather-rain" checked> weather-rain</label>
+                <label><input type="checkbox" name="topic" value="weather-temp" checked> weather-temp</label>
+                <label><input type="checkbox" name="topic" value="weather-wind" checked> weather-wind</label>
+            </fieldset>
+            <p class="hint">Strumienie do obciążenia. Bez zaznaczenia = wszystkie 3 (obsługuje backend).</p>
+            </div>
+
+            <div class="form-row">
+            <label class="field">
+                Eksperyment
+                <select name="exp" id="field-exp">
+                    <option value="E1">E1 — kalibracja</option>
+                    <option value="E4">E4 — saturacja</option>
+                    <option value="E2">E2 — drabinka &rho;</option>
+                    <option value="FREE" selected>FREE — dowolny</option>
+                </select>
+            </label>
+            <p id="exp-hint" class="hint"></p>
+            </div>
+
+            <div class="form-row">
+            <label class="field">
+                Etykieta
+                <input type="text" name="label" id="field-label" value="run" required>
+            </label>
+            <p class="hint">Wchodzi do runId: exp-config-etykieta-runN-epoka.</p>
+            </div>
+
+            <div class="form-row">
+            <fieldset>
+                <legend>Tryb i wartość</legend>
+                <label><input type="radio" name="mode" value="duration" checked> Czas (s)</label>
+                <label><input type="radio" name="mode" value="count"> Liczba wiadomości</label>
+                <label class="field" style="margin-top:0.4rem">
+                    <span id="field-value-label">Czas trwania biegu (s, 10–540)</span>
+                    <input type="number" name="value" id="field-value" value="120" min="10" max="540" required>
+                </label>
+            </fieldset>
+            <p class="hint">Tryb decyduje, co znaczy wartość. Limiter tempa działa w obu; backend wymaga dokładnie jednego z nich (drugie puste).</p>
+            </div>
+
+            <div class="form-row">
+            <label class="field">
+                Tempo (msg/s, 0 = bez limitu)
+                <input type="number" name="ratePerSec" id="field-rate" value="0" min="0" step="0.1">
+            </label>
+            <p class="hint">Limit na inwokację. E4 zawsze 0 (odkręcony kurek).</p>
+            </div>
+
+            <div class="form-row">
+            <label class="field">
+                Równoległość (P, 1–500)
+                <input type="number" name="parallelism" id="field-parallelism" value="1" min="1" max="500" required>
+            </label>
+            <p class="hint">Liczba inwokacji funkcji. Backend 1–500; sensownie ≤100 (limit Direct VPC).</p>
+            </div>
+
+            <div class="form-row">
+            <label class="field">
+                Obciążenie (intensity, 0–1)
+                <input type="number" name="intensity" id="field-intensity" value="0.5" min="0" max="1" step="0.05">
+            </label>
+            <p class="hint">Stałe 0.7 w kampanii. Skaluje treść generatora; treść pomiarów niebadana.</p>
+            </div>
+
+            <div class="form-row">
+            <label class="field">
+                runIndex (≥1)
+                <input type="number" name="runIndex" id="field-run-index" value="1" min="1">
+            </label>
+            <p class="hint">Numer powtórzenia (1–3); unikalizuje runId.</p>
+            </div>
+
+            <button type="submit" id="btn-start">Start</button>
+            <button type="button" id="btn-abort">Przerwij aktywny bieg</button>
+            <p id="form-error" class="error-text"></p>
+        </form>
+
+        <h3>Ostatnie biegi</h3>
+        <div id="export-banner" class="export-banner" hidden></div>
+        <ul id="run-list" class="run-list"><li class="hint">brak jeszcze biegów</li></ul>
+        <p class="hint">Profil liczysz w zakładce <strong>Kalibracja</strong> (min. 3 biegi).</p>
+        <p class="hint">
+            Surowe dane (JSON): <a href="/api/tick" target="_blank">aktualna ramka 1 Hz</a> &middot;
+            <a href="/api/runs" target="_blank">lista biegów</a> &middot;
+            <a href="/metrics" target="_blank">metryki Prometheus</a>
+        </p>
+    </section>
+    </div>
+    <div id="tab-calib" hidden>
+<section class="panel calib-panel">
+        <h2>Kalibracja parametrów</h2>
+        <p class="hint">Wybierz <strong>min. 3 biegi</strong> na parametr (tylko biegi, z których parametr da się policzyć — reszta jest odfiltrowana). Wynik to mediana ± SD (błąd bezwzględny) i CoV (błąd względny). Bez μ Kingman nie liczy ρ.</p>
+        <fieldset>
+            <legend>Źródło c² w predykcji na żywo</legend>
+            <label><input type="radio" name="kingman-mode" value="profile" checked> profil (zamrożone c²)</label>
+            <label><input type="radio" name="kingman-mode" value="live"> live (bieżące estymaty c<sub>a</sub>²/c<sub>s</sub>²; τ i μ zawsze z profilu)</label>
+            <div class="field">
+                <button type="button" id="btn-omb-import" disabled title="Sprawdzam /profiles.json…">Import profilu OMB</button>
+                <p class="hint" id="omb-note">szukam pliku profilu OMB…</p>
+            </div>
+        </fieldset>
+        <div class="calib-grid">
+            <div class="calib-card" data-param="tauAckMs">
+                <h3>τ<sub>ack</sub> <small>ms</small></h3>
+                <p class="hint">Mediana ACK przy niskim obciążeniu (E1, summary.ackP50).</p>
+                <ul class="calib-list"></ul>
+                <p class="calib-result hint">wybierz biegi…</p>
+            </div>
+            <div class="calib-card" data-param="tauE2eMs">
+                <h3>τ<sub>e2e</sub> <small>ms</small></h3>
+                <p class="hint">Mediana e2e przy niskim obciążeniu (E1, mediana e2e_p50_ms).</p>
+                <ul class="calib-list"></ul>
+                <p class="calib-result hint">wybierz biegi…</p>
+            </div>
+            <div class="calib-card" data-param="cs2">
+                <h3>c<sub>s</sub>²</h3>
+                <p class="hint">Zmienność obsługi (E1, (sd/mean)² histogramu ACK).</p>
+                <ul class="calib-list"></ul>
+                <p class="calib-result hint">wybierz biegi…</p>
+            </div>
+            <div class="calib-card" data-param="ca2">
+                <h3>c<sub>a</sub>²</h3>
+                <p class="hint">Zmienność napływu (E1; tylko biegi z mierzalnym indeksem dyspersji).</p>
+                <ul class="calib-list"></ul>
+                <p class="calib-result hint">wybierz biegi…</p>
+            </div>
+            <div class="calib-card" data-param="muMsgs">
+                <h3>μ <small>msg/s</small></h3>
+                <p class="hint">Pojemność (E4, λ biegu). Plateau (P, po którym λ stoi) oceniasz Ty — zaznacz biegi plateau.</p>
+                <ul class="calib-list"></ul>
+                <p class="calib-result hint">wybierz biegi…</p>
+            </div>
+        </div>
+        <label class="field">Nazwa profilu w bibliotece
+            <input type="text" id="calib-name" placeholder="np. E1-3b-rf3-2026-09 (pusto = auto)">
+        </label>
+        <button type="button" id="btn-calib-save" class="secondary" disabled>Policz podgląd</button>
+        <button type="button" id="btn-calib-apply">Zapisz do biblioteki (nie aktywuje)</button>
+        <p id="calib-status" class="hint"></p>
+    </section>
+    </div>
+</main>
+
+
+<script src="api-base.js"></script>
+<script src="glossary.js"></script>
+<script src="charts.js"></script>
+<script src="control.js"></script>
+<script src="calibration.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>

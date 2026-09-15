@@ -1,0 +1,9 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "matrix",
+    "result": [
+      {"metric": {"node": "kafka-1"}, "values": [[1725000000, "0.05"], [1725000030, "0.06"], [1725000060, "0.05"]]}
+    ]
+  }
+}

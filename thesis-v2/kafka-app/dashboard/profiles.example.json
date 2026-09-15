@@ -1,0 +1,29 @@
+{
+  "1b-rf1": {
+    "config": "1b-rf1",
+    "muMsgs": 180000,
+    "tauAckMs": 7.2,
+    "tauE2eMs": 21.5,
+    "ca2": 1.05,
+    "cs2": 0.62,
+    "source": "E1/E4 pipeline 2026-09-10"
+  },
+  "3b-rf1": {
+    "config": "3b-rf1",
+    "muMsgs": 480000,
+    "tauAckMs": 6.4,
+    "tauE2eMs": 18.9,
+    "ca2": 1.02,
+    "cs2": 0.55,
+    "source": "E1/E4 pipeline 2026-09-11"
+  },
+  "3b-rf3": {
+    "config": "3b-rf3",
+    "muMsgs": 260000,
+    "tauAckMs": 11.8,
+    "tauE2eMs": 27.3,
+    "ca2": 1.10,
+    "cs2": 0.71,
+    "source": "E1/E4 pipeline 2026-09-12"
+  }
+}
